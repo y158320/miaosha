@@ -7,7 +7,7 @@ server:
 spring:
   datasource:
     name: miaosha
-    url: jdbc:mysql://192.168.1.25:3306/miaosha
+    url: jdbc:mysql://47.104.159.8:3306/miaosha
     username: root
     password: Star*2018
     type: com.alibaba.druid.pool.DruidDataSource
