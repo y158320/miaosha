@@ -3,16 +3,19 @@ package com.miaoshaproject.contorller;
 import com.miaoshaproject.contorller.viewobject.ItemVo;
 import com.miaoshaproject.error.BussinessException;
 import com.miaoshaproject.response.CommonReturnType;
+import com.miaoshaproject.service.CacheService;
 import com.miaoshaproject.service.ItemService;
 import com.miaoshaproject.service.model.ItemModel;
 import org.joda.time.format.DateTimeFormat;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -26,7 +29,10 @@ public class ItemController extends BaseController {
     
     @Autowired
     ItemService itemService;
-
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired
+    private CacheService cacheService;
 
     //创建商品
     @RequestMapping(value = "/create", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
@@ -36,6 +42,7 @@ public class ItemController extends BaseController {
                                        @RequestParam(name = "stock") Integer stock,
                                        @RequestParam(name = "imgUrl") String imgUrl,
                                        @RequestParam(name = "description") String description) throws BussinessException {
+
         // 封装service请求用来创建商品
         ItemModel itemModel = new ItemModel();
         itemModel.setTitle(title);
@@ -43,24 +50,35 @@ public class ItemController extends BaseController {
         itemModel.setStock(stock);
         itemModel.setImgUrl(imgUrl);
         itemModel.setDescription(description);
-//
         ItemModel itemModelForReturn = itemService.createItem(itemModel);
         ItemVo itemVO = this.convertVOFromModel(itemModelForReturn);
-
         return CommonReturnType.create(itemVO);
     }
-
-
-
-
 
     //商品详情页浏览
     @RequestMapping(value = "/get", method = {RequestMethod.GET})
     @ResponseBody
     public CommonReturnType getItem(@RequestParam(name = "id")Integer id){
-        ItemModel itemModel = itemService.getItemById(id);
-        ItemVo itemVo = this.convertVOFromModel(itemModel);
+        ItemModel itemModel=null;
 
+        //先取本地缓存
+        itemModel= (ItemModel) cacheService.getFromCommonCache("item_"+id);
+        if (itemModel==null)
+        {
+            //根据商品的id到redis内获取
+            itemModel= (ItemModel) redisTemplate.opsForValue().get("item_"+id);
+            //如redis内不纯在对应的itemModel，则访问下游的service
+            if (itemModel==null)
+            {
+                itemModel=itemService.getItemById(id);
+                //设置itemModel到redis内
+                redisTemplate.opsForValue().set("item_"+id,itemModel);
+                redisTemplate.expire("item_"+id,10, TimeUnit.MINUTES);
+            }
+            cacheService.setCommonCache("item_"+id,itemModel);
+        }
+
+        ItemVo itemVo = this.convertVOFromModel(itemModel);
         return CommonReturnType.create(itemVo);
     }
 
@@ -76,8 +94,6 @@ public class ItemController extends BaseController {
         }).collect(Collectors.toList());
         return CommonReturnType.create(itemVoList);
     }
-
-
 
     private ItemVo convertVOFromModel(ItemModel itemModel) {
         if(itemModel == null) {

@@ -5,7 +5,9 @@ import com.miaoshaproject.response.CommonReturnType;
 import com.miaoshaproject.service.OrderService;
 import com.miaoshaproject.service.model.OrderModel;
 import com.miaoshaproject.service.model.UserModel;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,9 +24,10 @@ public class OrderController extends BaseController {
 
     @Autowired
     private OrderService orderService;
-
     @Autowired
     private HttpServletRequest httpServletRequest;
+    @Autowired
+    private RedisTemplate redisTemplate;
 
     //封装下单请求
     @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
@@ -34,19 +37,17 @@ public class OrderController extends BaseController {
                                         @RequestParam(name="amount")Integer amount) throws BussinessException {
 
         //获取登录信息（Boolean)
-        Boolean isLogin = (Boolean) this.httpServletRequest.getSession().getAttribute("IS_LOGIN");
-//        System.out.println(isLogin.booleanValue());
-        if(isLogin == null || !isLogin.booleanValue()){
+        String token=httpServletRequest.getParameterMap().get("token")[0];
+        if (StringUtils.isEmpty(token))
+        {
             throw new BussinessException(EmBusinessError.USER_NOT_LOGIN,"用户还未登陆，不能下单");
         }
-//        Boolean isLogin = (Boolean) this.httpServletRequest.getSession().getAttribute("IS_LOGIN");
-//        if (isLogin == null || !isLogin.booleanValue()) {
-//            throw new BussinessException(EmBusinessError.USER_NOT_LOGIN, "用户还未登录，不能下单");
-//        }
-        UserModel userModel = (UserModel) this.httpServletRequest.getSession().getAttribute("LOGIN_USER");
+        UserModel userModel= (UserModel) redisTemplate.opsForValue().get(token);
+        if (userModel==null)
+        {
+            throw new BussinessException(EmBusinessError.USER_NOT_LOGIN,"用户还未登陆，不能下单");
+        }
         OrderModel orderModel = orderService.createOrder(userModel.getId(),itemId,promoId,amount);
         return CommonReturnType.create(null);
-
     }
-
 }
